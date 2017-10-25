@@ -28,6 +28,7 @@
 #include <boost/container/flat_map.hpp>
 #include <viennacl/compressed_matrix.hpp>
 #include <viennacl/linalg/cg.hpp>
+#include <viennacl/linalg/amg.hpp>
 #include "multi_array.hpp"
 
 namespace karpfen {
@@ -80,26 +81,26 @@ public:
         if(x > 0)
         {
           std::size_t stencil_xm1 = get_dof_id(x-1,y);
-          host_system_matrix[dof_id][stencil_xm1] = 1.0f;
+          host_system_matrix[dof_id][stencil_xm1] = -1.0f;
         }
         if(x < _num_dofs_x - 1)
         {
           std::size_t stencil_x1  = get_dof_id(x+1,y);
-          host_system_matrix[dof_id][stencil_x1] = 1.0f;
+          host_system_matrix[dof_id][stencil_x1] = -1.0f;
         }
 
         if(y > 0)
         {
           std::size_t stencil_ym1 = get_dof_id(x,y-1);
-          host_system_matrix[dof_id][stencil_ym1] = 1.0f;
+          host_system_matrix[dof_id][stencil_ym1] = -1.0f;
         }
         if(y < _num_dofs_y - 1)
         {
           std::size_t stencil_y1  = get_dof_id(x,y+1);
-          host_system_matrix[dof_id][stencil_y1] = 1.0;
+          host_system_matrix[dof_id][stencil_y1] = -1.0;
         }
 
-        host_system_matrix[dof_id][dof_id] = -4.0f;
+        host_system_matrix[dof_id][dof_id] = 4.0f;
       }
     }
 
@@ -117,7 +118,7 @@ public:
 
     viennacl::copy(_f->begin(), _f->end(), rhs->begin());
     // Multiply by dx^2 factor
-    (*rhs) *= (_dx*_dx);
+    (*rhs) *= -(_dx*_dx);
     return rhs;
   }
 
@@ -203,22 +204,22 @@ public:
     // Apply dx^2 factor
     Scalar dx2 = this->get_dx()*this->get_dx();
     for(std::size_t i = 0; i < host_rhs.size(); ++i)
-      host_rhs[i] *= dx2;
+      host_rhs[i] *= -dx2;
 
     // Subtract dirichlet BCs
 
     // Iterate over left and right edge
     for(std::size_t y = 0; y < this->get_num_dofs_y(); ++y)
     {
-      host_rhs[this->get_dof_id(0                       , y)] -= _left_bc[y];
-      host_rhs[this->get_dof_id(this->get_num_dofs_x()-1, y)] -= _right_bc[y];
+      host_rhs[this->get_dof_id(0                       , y)] += _left_bc[y];
+      host_rhs[this->get_dof_id(this->get_num_dofs_x()-1, y)] += _right_bc[y];
     }
 
     // Iterate over top and bottom edge
     for(std::size_t x = 0; x < this->get_num_dofs_x(); ++x)
     {
-      host_rhs[this->get_dof_id(x, 0                       )] -= _top_bc[x];
-      host_rhs[this->get_dof_id(x, this->get_num_dofs_y()-1)] -= _bottom_bc[x];
+      host_rhs[this->get_dof_id(x, 0                       )] += _top_bc[x];
+      host_rhs[this->get_dof_id(x, this->get_num_dofs_y()-1)] += _bottom_bc[x];
     }
 
     viennacl::copy(host_rhs, *rhs);
@@ -246,18 +247,39 @@ public:
 
   dense_vector_type solve(const system<Scalar>& sys) const
   {
-
     auto matrix_ptr = sys.assemble_system_matrix();
     auto rhs_ptr    = sys.assemble_rhs();
+
+
+    viennacl::linalg::amg_tag precond_tag;
+    viennacl::linalg::amg_precond<viennacl::compressed_matrix<Scalar>> amg(*matrix_ptr, precond_tag);
+    amg.setup();
 
     viennacl::linalg::cg_tag tag{_tol, _max_iterations};
     viennacl::linalg::cg_solver<dense_vector_type> solver{tag};
 
-    return solver(*matrix_ptr, *rhs_ptr);
+    auto result = solver(*matrix_ptr, *rhs_ptr, amg);
+    _iterations = solver.tag().iters();
+    _error = solver.tag().error();
+
+    return result;
+  }
+
+  unsigned get_num_iterations() const
+  {
+    return _iterations;
+  }
+
+  Scalar get_error() const
+  {
+    return _error;
   }
 private:
   Scalar _tol;
   unsigned _max_iterations;
+
+  mutable unsigned _iterations = 0;
+  mutable Scalar _error = 0.0f;
 };
 
 }

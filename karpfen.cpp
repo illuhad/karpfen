@@ -17,7 +17,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
+#define VIENNACL_WITH_OPENCL
+//#define VIENNACL_WITH_CUDA
 #include "fits.hpp"
 #include "karpfen.hpp"
 #include <iostream>
@@ -64,6 +65,9 @@ int main(int argc, char** argv)
 
     int platform = get_platform_index(argv[1]);
     viennacl::ocl::set_context_platform_index(0, platform);
+    if(viennacl::ocl::platform(platform).devices().size() == 0)
+      throw std::runtime_error{"No OpenCL devices available."};
+
 
     std::cout << "Using OpenCL device: " << viennacl::ocl::current_device().name() << std::endl;
 
@@ -128,8 +132,14 @@ int main(int argc, char** argv)
     karpfen::util::multi_array<scalar> solution;
     // Solve system
     karpfen::system2d<scalar> system{&cropped_rhs, dx};
-    karpfen::cg_solver<scalar> solver{1.0e-12f, 600};
+    karpfen::cg_solver<scalar> solver{1.0e-6f, 3000};
+
+    std::cout << "Solving sytem..." << std::endl;
     system.solve(solver, solution);
+    std::cout << "Solved system in " << solver.get_num_iterations()
+              << " iterations (error = " << solver.get_error() << ")"
+              << std::endl;
+
 
     // Combine boundary layer and solution to output
     karpfen::util::multi_array<scalar> result = bc;
