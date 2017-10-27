@@ -77,6 +77,7 @@ int main(int argc, char** argv)
     karpfen::util::multi_array<scalar> rhs, bc;
 
     scalar dx = static_cast<scalar>(std::stod(argv[4]));
+    std::cout << "Using pixel size dx=" << dx << std::endl;
 
     rhs_file.load(rhs);
     bc_file.load(bc);
@@ -118,7 +119,7 @@ int main(int argc, char** argv)
       left_bc[y]  = bc[left_idx];
       right_bc[y] = bc[right_idx];
     }
-    \
+
     // Crop boundary layer from rhs
     karpfen::util::multi_array<scalar> cropped_rhs{size_x, size_y};
     for(std::size_t x = 0; x < size_x; ++x)

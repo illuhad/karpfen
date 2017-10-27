@@ -139,7 +139,7 @@ public:
 
   Scalar get_dx() const
   {
-    return _dx*_dx;
+    return _dx;
   }
 
   template<class Solver>
