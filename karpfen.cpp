@@ -108,15 +108,15 @@ int main(int argc, char** argv)
     {
       std::size_t bottom_idx[] = {x+1, 0};
       std::size_t top_idx[]    = {x+1, size_y};
-      top_bc[x]    = rhs[top_idx];
-      bottom_bc[x] = rhs[bottom_idx];
+      top_bc[x]    = bc[top_idx];
+      bottom_bc[x] = bc[bottom_idx];
     }
     for(std::size_t y = 0; y < size_y; ++y)
     {
       std::size_t left_idx[] = {0,      y+1};
       std::size_t right_idx[]= {size_x, y+1};
-      left_bc[y]  = rhs[left_idx];
-      right_bc[y] = rhs[right_idx];
+      left_bc[y]  = bc[left_idx];
+      right_bc[y] = bc[right_idx];
     }
     \
     // Crop boundary layer from rhs
@@ -131,7 +131,12 @@ int main(int argc, char** argv)
 
     karpfen::util::multi_array<scalar> solution;
     // Solve system
-    karpfen::system2d<scalar> system{&cropped_rhs, dx};
+    karpfen::dirichlet_system2d<scalar> system{&cropped_rhs,
+          left_bc,
+          right_bc,
+          top_bc,
+          bottom_bc,
+          dx};
     karpfen::cg_solver<scalar> solver{1.0e-6f, 3000};
 
     std::cout << "Solving sytem..." << std::endl;

@@ -181,7 +181,11 @@ public:
                      const std::vector<Scalar>& top_bc,
                      const std::vector<Scalar>& bottom_bc,
                      Scalar dx)
-    : system2d<Scalar>{f, dx}
+    : system2d<Scalar>{f, dx},
+      _left_bc{left_bc},
+      _right_bc{right_bc},
+      _top_bc{top_bc},
+      _bottom_bc{bottom_bc}
   {
     assert(left_bc.size() == this->get_num_dofs_y());
     assert(right_bc.size() == this->get_num_dofs_y());
@@ -198,7 +202,7 @@ public:
 
     std::unique_ptr<dense_vector_type> rhs{new dense_vector_type(this->get_num_dofs())};
 
-    std::vector<Scalar> host_rhs{this->get_num_dofs()};
+    std::vector<Scalar> host_rhs(this->get_num_dofs());
     std::copy(this->_f->begin(), this->_f->end(), host_rhs.begin());
 
     // Apply dx^2 factor
@@ -206,7 +210,7 @@ public:
     for(std::size_t i = 0; i < host_rhs.size(); ++i)
       host_rhs[i] *= -dx2;
 
-    // Subtract dirichlet BCs
+    // Add dirichlet BCs
 
     // Iterate over left and right edge
     for(std::size_t y = 0; y < this->get_num_dofs_y(); ++y)
