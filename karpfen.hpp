@@ -222,8 +222,8 @@ public:
     // Iterate over top and bottom edge
     for(std::size_t x = 0; x < this->get_num_dofs_x(); ++x)
     {
-      host_rhs[this->get_dof_id(x, 0                       )] += _top_bc[x];
-      host_rhs[this->get_dof_id(x, this->get_num_dofs_y()-1)] += _bottom_bc[x];
+      host_rhs[this->get_dof_id(x, 0                       )] += _bottom_bc[x];
+      host_rhs[this->get_dof_id(x, this->get_num_dofs_y()-1)] += _top_bc[x];
     }
 
     viennacl::copy(host_rhs, *rhs);

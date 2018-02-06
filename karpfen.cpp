@@ -47,6 +47,47 @@ int get_platform_index(const std::string& platform_string)
   return std::stoi(id_string);
 }
 
+template<class T>
+std::vector<T> resample(const std::vector<T>& data,
+                        std::size_t resampled_size)
+{
+  std::vector<T> out(resampled_size);
+
+  for(std::size_t i = 0; i < resampled_size; ++i)
+  {
+    scalar relative_position = static_cast<scalar>(i)/static_cast<scalar>(resampled_size-1);
+
+    scalar original_position = relative_position * (data.size()-1);
+    std::size_t original_position0 = static_cast<std::size_t>(original_position);
+    std::size_t original_position1 = original_position0 + 1;
+
+    assert(original_position0 < data.size());
+
+    T v0 = data[original_position0];
+
+    T v1 = 0.0;
+    scalar f = 0.0;
+    if(original_position1 < data.size())
+    {
+      v1 = data[original_position1];
+      f = original_position - static_cast<scalar>(original_position0);
+    }
+
+    out[i] = f * v1 + (1 - f) * v0;
+  }
+
+  return out;
+}
+
+template<class T>
+std::vector<T> crop_ends(const std::vector<T>& x)
+{
+  assert(x.size() >= 2);
+  std::vector<T> result(x.size()-2);
+  std::copy(x.begin()+1,x.end()-1,result.begin());
+  return result;
+}
+
 int main(int argc, char** argv)
 {
   if(argc != 5)
@@ -88,10 +129,6 @@ int main(int argc, char** argv)
     if(bc.get_dimension() != 2)
       throw std::invalid_argument{"bc file must be 2d!\n"};
 
-    if(bc.get_extent_of_dimension(0) != rhs.get_extent_of_dimension(0) ||
-       bc.get_extent_of_dimension(1) != rhs.get_extent_of_dimension(1))
-      throw std::invalid_argument{"rhs and bc are not of the same size."};
-
     if(rhs.get_extent_of_dimension(0) <= 2 ||
        rhs.get_extent_of_dimension(1) <= 2)
       throw std::invalid_argument{"rhs must be at least 3x3 pixels in size."};
@@ -99,27 +136,34 @@ int main(int argc, char** argv)
     std::size_t size_x = rhs.get_extent_of_dimension(0)-2;
     std::size_t size_y = rhs.get_extent_of_dimension(1)-2;
 
-    // Extract boundary conditions
-    std::vector<scalar> top_bc(size_x);
-    std::vector<scalar> bottom_bc(size_x);
-    std::vector<scalar> left_bc(size_y);
-    std::vector<scalar> right_bc(size_y);
+    std::size_t bc_size_x = bc.get_extent_of_dimension(0);
+    std::size_t bc_size_y = bc.get_extent_of_dimension(1);
 
-    for(std::size_t x = 0; x < size_x; ++x)
+    // Extract boundary conditions
+    std::vector<scalar> top_bc(bc_size_x);
+    std::vector<scalar> bottom_bc(bc_size_x);
+    std::vector<scalar> left_bc(bc_size_y);
+    std::vector<scalar> right_bc(bc_size_y);
+
+    for(std::size_t x = 0; x < bc_size_x; ++x)
     {
-      std::size_t bottom_idx[] = {x+1, 0};
-      std::size_t top_idx[]    = {x+1, size_y};
+      std::size_t bottom_idx[] = {x, 0};
+      std::size_t top_idx[]    = {x, bc_size_y-1};
       top_bc[x]    = bc[top_idx];
       bottom_bc[x] = bc[bottom_idx];
     }
-    for(std::size_t y = 0; y < size_y; ++y)
+    for(std::size_t y = 0; y < bc_size_y; ++y)
     {
-      std::size_t left_idx[] = {0,      y+1};
-      std::size_t right_idx[]= {size_x, y+1};
+      std::size_t left_idx[] = {0,           y};
+      std::size_t right_idx[]= {bc_size_x-1, y};
       left_bc[y]  = bc[left_idx];
       right_bc[y] = bc[right_idx];
     }
-
+    // ToDo: Only crop ends if rhs_size == bc_size
+    top_bc    = resample(crop_ends(top_bc),    size_x);
+    bottom_bc = resample(crop_ends(bottom_bc), size_x);
+    left_bc   = resample(crop_ends(left_bc),   size_y);
+    right_bc  = resample(crop_ends(right_bc),  size_y);
     // Crop boundary layer from rhs
     karpfen::util::multi_array<scalar> cropped_rhs{size_x, size_y};
     for(std::size_t x = 0; x < size_x; ++x)
@@ -148,14 +192,30 @@ int main(int argc, char** argv)
 
 
     // Combine boundary layer and solution to output
-    karpfen::util::multi_array<scalar> result = bc;
+    karpfen::util::multi_array<scalar> result(rhs.get_extent_of_dimension(0),
+                                              rhs.get_extent_of_dimension(1));
+
     for(std::size_t x = 0; x < size_x; ++x)
+    {
+      std::size_t top_boundary []    = {x+1, size_y+1};
+      std::size_t bottom_boundary [] = {x+1, 0};
+      result[top_boundary] = top_bc[x];
+      result[bottom_boundary] = bottom_bc[x];
+
       for(std::size_t y = 0;  y < size_y; ++y)
       {
         std::size_t cropped_idx[]   = {x  ,y  };
         std::size_t uncropped_idx[] = {x+1,y+1};
         result[uncropped_idx] = solution[cropped_idx];
       }
+    }
+    for(std::size_t y = 0; y < size_y; ++y)
+    {
+      std::size_t left_boundary [] = {0       , y+1};
+      std::size_t right_boundary[] = {size_x+1, y+1};
+      result[left_boundary] = left_bc[y];
+      result[right_boundary] = right_bc[y];
+    }
 
     karpfen::util::fits<scalar> result_file{"karpfen_output.fits"};
     result_file.save(result);
